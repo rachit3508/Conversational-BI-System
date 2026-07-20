@@ -1,7 +1,25 @@
 [project]
 name = "conversational-bi-system"
 version = "0.1.0"
-description = "Add your description here"
+description = """\
+The Conversational BI System is an end-to-end analytics platform that \
+enables business users to interact with enterprise SQL Server databases \
+through natural language. Each natural language question is \
+automatically translated into a SQL query, executed against the \
+selected database, and results are presented simultaneously as \
+structured tabular data, the underlying SQL for transparency, an \
+AI-generated natural language summary, and an interactive Plotly \
+visualisation. The interface preserves full conversation history, \
+enabling follow-up queries and multi-turn analysis sessions."""
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "pyodbc>=5.3.0",
+    "python-dotenv>=1.2.2",
+    "sqlalchemy>=2.0.51",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
