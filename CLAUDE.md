@@ -24,7 +24,8 @@ Conversational-BI-System/
     ├── database/
     │   ├── __init__.py
     │   ├── connection.py    # build_url, check_connection, list_databases
-    │   └── registry.py      # get_engine — one cached, pooled Engine per database
+    │   ├── registry.py      # get_engine — one cached, pooled Engine per database
+    │   └── schema_service.py # reflected schema, cached per database, + LLM prompt text
     ├── exception/
     │   ├── __init__.py
     │   └── exception.py     # CustomException — traceback-aware, self-logging
@@ -34,13 +35,21 @@ Conversational-BI-System/
     └── tests/
         ├── __init__.py
         ├── test_connection.py
-        └── test_registry.py
+        ├── test_registry.py
+        └── test_schema_service.py
 
 ## Database access
 `registry.get_engine(name)` is the only way to obtain an Engine. Databases must be
 listed in `DB_NAMES` in `.env`; anything else raises `CustomException` before a
 connection is attempted. Engines are long lived and cached per database name — never
 call `create_engine` elsewhere.
+
+Schema knowledge comes from `schema_service`: `get_schema(db)` for the serialisable
+dict, `get_schema_prompt(db)` for the compact LLM text, `get_metadata(db)` for real
+SQLAlchemy `Table` objects. Never call `MetaData().reflect` directly — reflection costs
+roughly a second per database and the plain form silently misses non-default schemas
+(BikeStores keeps most of its tables in `production` and `sales`). Call
+`invalidate_schema(db)` after any DDL change.
 
 ## Rules
 1. Always add the logging and custom exception modules functionaities in all the newly created python files or modules.

@@ -71,6 +71,15 @@ def default_database() -> str:
     return _canonical(configured.strip(), databases)
 
 
+def canonical_database(database: str | None = None) -> str:
+    """Resolve a user-supplied name to its configured spelling, or raise if unknown.
+
+    Callers that cache per database (the schema service, for one) key on this so that
+    "bikestores" and "BikeStores" share a single entry rather than doing the work twice.
+    """
+    return _canonical(database) if database else default_database()
+
+
 def _canonical(database: str, databases: list[str] | None = None) -> str:
     """Resolve ``database`` to its configured spelling, or raise if it is not configured.
 
@@ -95,7 +104,7 @@ def get_engine(database: str | None = None) -> Engine:
     Defaults to :func:`default_database`. Raises ``CustomException`` for any database
     not listed in ``DB_NAMES``.
     """
-    target = _canonical(database) if database else default_database()
+    target = canonical_database(database)
 
     # Fast path: no lock needed for a hit, dict reads are atomic under the GIL.
     engine = _engines.get(target)
