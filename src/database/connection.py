@@ -1,7 +1,8 @@
-"""SQL Server connection management.
+"""SQL Server connection concerns -- building URLs and verifying reachability.
 
-Owns connection concerns only -- building the URL, creating and caching engines,
-and verifying reachability. Query execution belongs in a separate module.
+Engine creation and caching live in :mod:`src.database.registry`; this module only
+describes *how* to reach a database, not *which* engines exist. Query execution belongs
+in a separate module again.
 
 Uses Windows (trusted) authentication against a local instance, so no username or
 password is ever handled here. Settings come from ``.env`` via python-dotenv.
@@ -10,8 +11,8 @@ password is ever handled here. Settings come from ``.env`` via python-dotenv.
 import os
 
 from dotenv import load_dotenv
-from sqlalchemy import create_engine, text
-from sqlalchemy.engine import URL, Engine
+from sqlalchemy import text
+from sqlalchemy.engine import URL
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.exception.exception import CustomException
@@ -20,15 +21,11 @@ from src.logging.logger import logger
 load_dotenv()
 
 DB_SERVER = os.getenv("DB_SERVER")
-DB_NAME = os.getenv("DB_NAME")
 DB_DRIVER = os.getenv("DB_DRIVER", "ODBC Driver 18 for SQL Server")
 DB_TRUST_SERVER_CERTIFICATE = os.getenv("DB_TRUST_SERVER_CERTIFICATE", "yes")
 
-# One engine (and therefore one connection pool) per database name.
-_engines: dict[str, Engine] = {}
 
-
-def _build_url(database: str) -> URL:
+def build_url(database: str) -> URL:
     """Build the connection URL for ``database``.
 
     ``URL.create`` is used rather than string formatting because the instance name
@@ -51,46 +48,33 @@ def _build_url(database: str) -> URL:
     )
 
 
-def get_engine(database: str | None = None) -> Engine:
-    """Return a pooled engine for ``database``, defaulting to ``DB_NAME`` from .env.
-
-    Engines are cached per database name so repeated calls reuse the same pool.
-    """
-    target = database or DB_NAME
-
-    if not target:
-        raise CustomException("DB_NAME is not set and no database was passed.")
-
-    if target in _engines:
-        return _engines[target]
-
-    try:
-        # The URL embeds connection details and is never logged.
-        engine = create_engine(_build_url(target), pool_pre_ping=True)
-    except SQLAlchemyError as e:
-        raise CustomException(e) from e
-
-    logger.info("Created engine for database '%s' on server '%s'", target, DB_SERVER)
-    _engines[target] = engine
-    return engine
-
-
-def test_connection(database: str | None = None) -> bool:
+def check_connection(database: str | None = None) -> bool:
     """Open a connection and run ``SELECT 1``. Returns True when reachable."""
-    target = database or DB_NAME
+    # Imported here rather than at module scope: registry imports build_url from this
+    # module, and a top-level import back would make the two modules circular.
+    from src.database.registry import get_engine
+
+    engine = get_engine(database)
 
     try:
-        with get_engine(target).connect() as conn:
+        with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
     except SQLAlchemyError as e:
         raise CustomException(e) from e
 
-    logger.info("Connection to database '%s' verified", target)
+    logger.info("Connection to database '%s' verified", engine.url.database)
     return True
 
 
 def list_databases() -> list[str]:
-    """Return the user databases on the server, for the database picker."""
+    """Return the user databases present on the server.
+
+    This is what the *server* holds; ``registry.configured_databases`` is what the user
+    is allowed to pick. Useful for spotting a database that exists but is not yet
+    configured in ``DB_NAMES``.
+    """
+    from src.database.registry import get_engine
+
     query = text(
         "SELECT name FROM sys.databases "
         "WHERE database_id > 4 ORDER BY name"  # skip master/tempdb/model/msdb

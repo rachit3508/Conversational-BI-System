@@ -7,52 +7,48 @@ should mean something is genuinely wrong with the connection setup.
 
 import pytest
 from sqlalchemy import text
-from sqlalchemy.engine import Engine
 
-from src.database.connection import (
-    DB_NAME,
-    get_engine,
-    list_databases,
-)
-# Aliased: imported as-is, pytest would collect the helper itself as a test case
-# and then fail looking for a fixture named "database".
-from src.database.connection import test_connection as check_connection
+from src.database.connection import build_url, check_connection, list_databases
+from src.database.registry import configured_databases, default_database, get_engine
 from src.exception.exception import CustomException
 
 
 def test_default_connection_succeeds():
-    """The database named in .env is reachable."""
+    """The default database from .env is reachable."""
     assert check_connection() is True
 
 
-def test_engine_is_returned():
-    engine = get_engine()
-    assert isinstance(engine, Engine)
-
-
-def test_engines_are_cached_per_database():
-    """Repeated calls reuse one pool instead of opening a new one each time."""
-    assert get_engine() is get_engine()
-    assert get_engine("BikeStores") is not get_engine()
+def test_every_configured_database_is_reachable():
+    for database in configured_databases():
+        assert check_connection(database) is True
 
 
 def test_connection_targets_the_expected_database():
-    """The engine is actually bound to DB_NAME, not silently falling back to master."""
+    """The engine is actually bound to the default, not silently falling back to master."""
     with get_engine().connect() as conn:
         current = conn.execute(text("SELECT DB_NAME()")).scalar()
-    assert current == DB_NAME
-
-
-def test_database_override_reaches_a_different_database():
-    with get_engine("BikeStores").connect() as conn:
-        current = conn.execute(text("SELECT DB_NAME()")).scalar()
-    assert current == "BikeStores"
+    assert current == default_database()
 
 
 def test_list_databases_excludes_system_databases():
     databases = list_databases()
-    assert DB_NAME in databases
+    assert default_database() in databases
     assert not {"master", "tempdb", "model", "msdb"} & set(databases)
+
+
+def test_configured_databases_all_exist_on_the_server():
+    """Catches a stale DB_NAMES entry pointing at a database that was dropped."""
+    on_server = {name.casefold() for name in list_databases()}
+    missing = [db for db in configured_databases() if db.casefold() not in on_server]
+    assert not missing, f"configured but absent from the server: {missing}"
+
+
+def test_url_carries_the_settings_the_local_instance_needs():
+    url = build_url("BikeStores")
+    assert url.database == "BikeStores"
+    assert url.query["trusted_connection"] == "yes"
+    # Driver 18 encrypts by default and a local instance has no trusted certificate.
+    assert url.query["TrustServerCertificate"] == "yes"
 
 
 def test_unknown_database_raises_custom_exception():

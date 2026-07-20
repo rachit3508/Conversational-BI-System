@@ -13,18 +13,34 @@ Conversational-BI-System/
 ├── README.md
 ├── .gitignore
 ├── .python-version          # 3.11 (uv-managed)
-├── pyproject.toml           # dependencies still empty
+├── .env.example             # tracked template; .env itself is gitignored
+├── pyproject.toml           # sqlalchemy, pyodbc, python-dotenv; pytest (dev)
+├── uv.lock
 ├── main.py                  # uv init placeholder
-├── prompt.txt               # empty
+├── prompt.txt               # current task brief
 ├── logs/                    # gitignored; timestamped run logs
 └── src/
     ├── __init__.py
+    ├── database/
+    │   ├── __init__.py
+    │   ├── connection.py    # build_url, check_connection, list_databases
+    │   └── registry.py      # get_engine — one cached, pooled Engine per database
     ├── exception/
     │   ├── __init__.py
     │   └── exception.py     # CustomException — traceback-aware, self-logging
-    └── logging/
+    ├── logging/
+    │   ├── __init__.py
+    │   └── logger.py        # configured `logger` (file + stdout)
+    └── tests/
         ├── __init__.py
-        └── logger.py        # configured `logger` (file + stdout)
+        ├── test_connection.py
+        └── test_registry.py
+
+## Database access
+`registry.get_engine(name)` is the only way to obtain an Engine. Databases must be
+listed in `DB_NAMES` in `.env`; anything else raises `CustomException` before a
+connection is attempted. Engines are long lived and cached per database name — never
+call `create_engine` elsewhere.
 
 ## Rules
 1. Always add the logging and custom exception modules functionaities in all the newly created python files or modules.
